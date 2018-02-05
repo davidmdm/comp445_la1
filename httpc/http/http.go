@@ -8,10 +8,20 @@ import (
 	"regexp"
 )
 
+var colon, _ = regexp.Compile(":")
+var slash, _ = regexp.Compile("/")
+
+// RequestOptions struct containing fields needed for request options
+type RequestOptions struct {
+	Uri     string
+	Port    string
+	Headers HeaderMap
+	Verbose bool
+	Data    string
+}
+
 // HeaderMap is a key value map for http headers that implements the flag.Value interface.
 type HeaderMap map[string]string
-
-var colon, _ = regexp.Compile(":")
 
 func (h HeaderMap) String() string {
 	s := ""
@@ -31,31 +41,16 @@ func (h HeaderMap) Set(s string) error {
 	return nil
 }
 
-func uriToHostAndPath(uri string) (string, string) {
-	r, _ := regexp.Compile("/")
-
-	pathIndex := r.FindStringIndex(uri)
-
-	var host string
-	var path string
-	if len(pathIndex) == 0 {
+func uriToHostAndPath(uri string) (host, path string) {
+	indexes := slash.FindStringIndex(uri)
+	if len(indexes) == 0 {
 		host = uri
 		path = "/"
 	} else {
-		temp := uri
-		host = temp[:pathIndex[0]]
-		path = temp[pathIndex[0]:]
+		host = uri[:indexes[0]]
+		path = uri[indexes[0]:]
 	}
-	return host, path
-}
-
-// RequestOptions struct containing fields needed for request options
-type RequestOptions struct {
-	Uri     string
-	Port    string
-	Headers HeaderMap
-	Verbose bool
-	Data    string
+	return
 }
 
 func send(host, port, protocol string, verbose bool) error {
@@ -89,7 +84,6 @@ func Get(options RequestOptions) error {
 	options.Headers["Host"] = host
 	request := fmt.Sprintf("GET %s HTTP/1.0", path)
 	protocol := fmt.Sprintf("%s\r\n%s\r\n", request, options.Headers)
-
 	return send(host, options.Port, protocol, options.Verbose)
 }
 
@@ -98,10 +92,7 @@ func Get(options RequestOptions) error {
 func Post(options RequestOptions) error {
 	host, path := uriToHostAndPath(options.Uri)
 	options.Headers["Host"] = host
-
 	request := fmt.Sprintf("POST %s HTTP/1.0", path)
 	protocol := fmt.Sprintf("%s\r\n%s\r\n%s", request, options.Headers, options.Data)
-
 	return send(host, options.Port, protocol, options.Verbose)
-
 }
