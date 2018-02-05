@@ -3,9 +3,10 @@ package http
 import (
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
-	"os"
 	"regexp"
+	"strings"
 )
 
 var colon, _ = regexp.Compile(":")
@@ -18,6 +19,7 @@ type RequestOptions struct {
 	Headers HeaderMap
 	Verbose bool
 	Data    string
+	W       io.Writer
 }
 
 // HeaderMap is a key value map for http headers that implements the flag.Value interface.
@@ -53,16 +55,14 @@ func uriToHostAndPath(uri string) (host, path string) {
 	return
 }
 
-func send(host, port, protocol string, verbose bool) error {
+func send(host, port, protocol string, verbose bool, w io.Writer) error {
 	conn, err := net.Dial("tcp", fmt.Sprintf("%s:%s", host, port))
 	if err != nil {
 		return fmt.Errorf("Error establishing connection: %v", err)
 	}
 
 	if verbose {
-		fmt.Println()
-		fmt.Printf("Request:\n\n%s\n\n", protocol)
-		fmt.Print("Reponse:\n\n")
+		fmt.Fprintf(w, "\n%s\n\n", protocol)
 	}
 
 	_, err = fmt.Fprint(conn, protocol)
@@ -70,8 +70,21 @@ func send(host, port, protocol string, verbose bool) error {
 		return fmt.Errorf("Error writing to connection: %v", err)
 	}
 
-	if _, err = io.Copy(os.Stdout, conn); err != nil {
+	response, err := ioutil.ReadAll(conn)
+	if err != nil {
 		return fmt.Errorf("Error reading response: %v", err)
+	}
+
+	sections := strings.Split(string(response), "\r\n\r\n")
+
+	if verbose {
+		fmt.Fprintln(w, sections[0])
+	}
+
+	_, err = fmt.Fprintf(w, "\n%s\n", strings.Join(sections[1:], "\r\n\r\n"))
+
+	if err != nil {
+		return fmt.Errorf("Could not write response: %v", err)
 	}
 
 	return nil
@@ -84,7 +97,7 @@ func Get(options RequestOptions) error {
 	options.Headers["Host"] = host
 	request := fmt.Sprintf("GET %s HTTP/1.0", path)
 	protocol := fmt.Sprintf("%s\r\n%s\r\n", request, options.Headers)
-	return send(host, options.Port, protocol, options.Verbose)
+	return send(host, options.Port, protocol, options.Verbose, options.W)
 }
 
 // Post creates an http post request given a uri, headers, port and data.
@@ -94,5 +107,5 @@ func Post(options RequestOptions) error {
 	options.Headers["Host"] = host
 	request := fmt.Sprintf("POST %s HTTP/1.0", path)
 	protocol := fmt.Sprintf("%s\r\n%s\r\n%s", request, options.Headers, options.Data)
-	return send(host, options.Port, protocol, options.Verbose)
+	return send(host, options.Port, protocol, options.Verbose, options.W)
 }

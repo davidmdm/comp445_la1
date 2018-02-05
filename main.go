@@ -5,6 +5,7 @@ import (
 	"comp445/la1/httpc/http"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"os"
@@ -20,6 +21,7 @@ func main() {
 	v := flag.Bool("v", false, "Verbose mode")
 	d := flag.Bool("d", false, "Data to transmit")
 	f := flag.String("f", "", "File to transmit")
+	o := flag.String("o", "", "Destination file to write response to. If not specified defaults to standard output")
 
 	flag.Parse()
 
@@ -68,12 +70,29 @@ func main() {
 		data = string(file)
 	}
 
+	if *o != "" && *o == *f {
+		log.Fatalln("Input and output file can not be the same.")
+	}
+
+	var w io.Writer
+	if *o != "" {
+		file, err := os.Create(*o)
+		defer file.Close()
+		if err != nil {
+			log.Fatalf("Could not create file: %v", err)
+		}
+		w = file
+	} else {
+		w = os.Stdout
+	}
+
 	options := http.RequestOptions{
 		Uri:     uri,
 		Port:    *p,
 		Headers: headers,
 		Verbose: *v,
 		Data:    data,
+		W:       w,
 	}
 
 	switch method {

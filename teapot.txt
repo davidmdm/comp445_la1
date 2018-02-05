@@ -1,0 +1,29 @@
+
+GET /status/418 HTTP/1.0
+Host: httpbin.org
+
+
+
+HTTP/1.1 418 I'M A TEAPOT
+Connection: close
+Server: meinheld/0.6.1
+Date: Mon, 05 Feb 2018 03:48:51 GMT
+Access-Control-Allow-Origin: *
+X-Powered-By: Flask
+Access-Control-Allow-Credentials: true
+X-Processed-Time: 0.000458002090454
+X-More-Info: http://tools.ietf.org/html/rfc2324
+Content-Length: 135
+Via: 1.1 vegur
+
+
+    -=[ teapot ]=-
+
+       _...._
+     .'  _ _ `.
+    | ."` ^ `". _,
+    \_;`"---"`|//
+      |       ;/
+      \_     _/
+        `"""`
+
