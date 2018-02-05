@@ -1,1 +1,0 @@
-I am a little bit of text to be transmitted from a file.

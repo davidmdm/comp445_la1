@@ -1,45 +1,25 @@
 package main
 
 import (
+	"bufio"
+	"comp445/la1/httpc/http"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
-	"net"
-	"regexp"
+	"os"
+	"strconv"
 	"strings"
 )
 
-type header map[string]string
-
-var colon, _ = regexp.Compile(":")
-
-func (h header) String() string {
-	s := "{\n"
-	for key, value := range h {
-		s += fmt.Sprintf("  %s: %v\n", key, value)
-	}
-	s += "}"
-	return s
-}
-
-func (h header) Set(s string) error {
-	if !colon.MatchString(s) {
-		return fmt.Errorf("Header value must contain a key:value pair; recieved: %s", s)
-	}
-	header := strings.Split(s, ":")
-	h[header[0]] = header[1]
-	return nil
-}
-
 func main() {
 
-	var headerMap header
-
-	flag.Var(headerMap, "h", "header key:value pair")
-
-	port := flag.String("p", "80", "The connection port")
-	verbose := flag.Bool("v", false, "Verbose mode")
+	var headers http.HeaderMap = map[string]string{}
+	flag.Var(headers, "h", "header key:value pair")
+	p := flag.String("p", "80", "The connection port")
+	v := flag.Bool("v", false, "Verbose mode")
+	d := flag.Bool("d", false, "Data to transmit")
+	f := flag.String("f", "", "File to transmit")
 
 	flag.Parse()
 
@@ -57,39 +37,53 @@ func main() {
 		log.Fatalf("Method not supported: %v\n", method)
 	}
 
-	r, _ := regexp.Compile("/")
-
-	pathIndex := r.FindStringIndex(uri)
-
-	var host string
-	var path string
-	if len(pathIndex) == 0 {
-		host = uri
-		path = "/"
-	} else {
-		temp := uri
-		host = temp[:pathIndex[0]]
-		path = temp[pathIndex[0]:]
+	if method == "GET" && *d == true {
+		log.Fatalln("Can only use data option with POST request")
 	}
 
-	conn, err := net.Dial("tcp", fmt.Sprintf("%s:%s", host, *port))
-	if err != nil {
-		log.Fatalf("connection could no be established: %v", err)
+	if method == "GET" && *f != "" {
+		log.Fatalln("Can only use file option with POST request")
 	}
 
-	protocol := fmt.Sprintf("%s %s HTTP/1.0\r\nHost: %s\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: 13\r\n\r\nsay=Hi&to=Mom", method, path, host)
-
-	if *verbose == true {
-		fmt.Println(protocol, "\n\n")
+	if *d == true && *f != "" {
+		log.Fatalln("data and file options cannot be used together pick one")
 	}
 
-	fmt.Fprintf(conn, protocol)
-
-	bs, err := ioutil.ReadAll(conn)
-	if err != nil {
-		log.Fatalf("Could not read response: %v", err)
+	var data string
+	if *d == true {
+		scanner := bufio.NewScanner(os.Stdin)
+		fmt.Println("Enter the data to transmit")
+		fmt.Print("-> ")
+		scanner.Scan()
+		data = scanner.Text()
+		headers["Content-Length"] = strconv.Itoa(len([]byte(data)))
 	}
 
-	fmt.Println(string(bs))
+	if *f != "" {
+		file, err := ioutil.ReadFile(*f)
+		if err != nil {
+			log.Fatalf("Could not read file: %v", err)
+		}
+		headers["Content-Length"] = strconv.Itoa(len(file))
+		data = string(file)
+	}
 
+	options := http.RequestOptions{
+		Uri:     uri,
+		Port:    *p,
+		Headers: headers,
+		Verbose: *v,
+		Data:    data,
+	}
+
+	switch method {
+	case "GET":
+		if err := http.Get(options); err != nil {
+			log.Fatal(err)
+		}
+	case "POST":
+		if err := http.Post(options); err != nil {
+			log.Fatal(err)
+		}
+	}
 }
