@@ -14,6 +14,7 @@ var (
 	slash     = regexp.MustCompile("/")
 	httpStart = regexp.MustCompile("^http://")
 	location  = regexp.MustCompile(`Location: (\S+)\r\n`)
+	status    = regexp.MustCompile(`\S+\s(\d{3})\s\S+`)
 )
 
 // RequestOptions struct containing fields needed for request options
@@ -65,11 +66,11 @@ func uriToHostAndPath(uri string) (host, path string) {
 func send(host, protocol string, options RequestOptions) error {
 	conn, err := net.Dial("tcp", fmt.Sprintf("%s:%s", host, options.Port))
 	if err != nil {
-		return fmt.Errorf("Error establishing connection: %v", err)
+		return fmt.Errorf("Error establishing connection to \"%s:%s\" : %v", host, options.Port, err)
 	}
 
 	if options.Verbose {
-		fmt.Fprintf(options.W, "\n%s\n\n", protocol)
+		fmt.Fprintf(options.W, "\n%s\n", protocol)
 	}
 
 	_, err = fmt.Fprint(conn, protocol)
@@ -88,24 +89,35 @@ func send(host, protocol string, options RequestOptions) error {
 		fmt.Fprintln(options.W, sections[0])
 	}
 
+	responseLine := strings.Split(sections[0], "\r\n")[0]
+	statusCode := status.FindStringSubmatch(responseLine)[1]
+
+	if statusCode == "301" || statusCode == "302" && options.FollowRedirect {
+		if options.attempts < 5 {
+			loc := location.FindStringSubmatch(sections[0])[1]
+			relativePath := strings.Index(loc, "/") == 0
+
+			if relativePath {
+				options.Uri = host + loc
+			} else {
+				options.Uri = loc
+			}
+
+			options.attempts++
+			return Get(options)
+		}
+
+		_, err = fmt.Fprintln(options.W, "Redirected more than five times. Exiting")
+		if err != nil {
+			return fmt.Errorf("Error writing to output: %v", err)
+		}
+
+		return nil
+	}
+
 	_, err = fmt.Fprintf(options.W, "\n%s\n", strings.Join(sections[1:], "\r\n\r\n"))
 	if err != nil {
 		return fmt.Errorf("Could not write response: %v", err)
-	}
-
-	r, _ := regexp.Compile(`\S+\s(\d{3})\s\S+`)
-	responseLine := strings.Split(sections[0], "\r\n")[0]
-	statusCode := r.FindStringSubmatch(responseLine)[1]
-
-	if statusCode == "301" || statusCode == "302" {
-		if options.FollowRedirect && options.attempts < 5 {
-
-			redirectUri := location.FindStringSubmatch(sections[0])[1]
-			options.Uri = redirectUri
-			options.attempts++
-
-			return Get(options)
-		}
 	}
 
 	return nil
