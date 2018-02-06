@@ -22,6 +22,7 @@ func main() {
 	d := flag.Bool("d", false, "Data to transmit")
 	f := flag.String("f", "", "File to transmit")
 	o := flag.String("o", "", "Destination file to write response to. If not specified defaults to standard output")
+	r := flag.Bool("r", false, "Follow redirects")
 
 	flag.Parse()
 
@@ -52,7 +53,7 @@ func main() {
 	}
 
 	var data string
-	if *d == true {
+	if *d {
 		scanner := bufio.NewScanner(os.Stdin)
 		fmt.Println("Enter the data to transmit")
 		fmt.Print("-> ")
@@ -87,12 +88,13 @@ func main() {
 	}
 
 	options := http.RequestOptions{
-		Uri:     uri,
-		Port:    *p,
-		Headers: headers,
-		Verbose: *v,
-		Data:    data,
-		W:       w,
+		Uri:            uri,
+		Port:           *p,
+		Headers:        headers,
+		Verbose:        *v,
+		Data:           data,
+		W:              w,
+		FollowRedirect: *r,
 	}
 
 	switch method {

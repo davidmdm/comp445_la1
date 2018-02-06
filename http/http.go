@@ -9,17 +9,23 @@ import (
 	"strings"
 )
 
-var colon, _ = regexp.Compile(":")
-var slash, _ = regexp.Compile("/")
+var (
+	colon     = regexp.MustCompile(":")
+	slash     = regexp.MustCompile("/")
+	httpStart = regexp.MustCompile("^http://")
+	location  = regexp.MustCompile(`Location: (\S+)\r\n`)
+)
 
 // RequestOptions struct containing fields needed for request options
 type RequestOptions struct {
-	Uri     string
-	Port    string
-	Headers HeaderMap
-	Verbose bool
-	Data    string
-	W       io.Writer
+	Uri            string
+	Port           string
+	Headers        HeaderMap
+	Verbose        bool
+	Data           string
+	W              io.Writer
+	FollowRedirect bool
+	attempts       int
 }
 
 // HeaderMap is a key value map for http headers that implements the flag.Value interface.
@@ -44,6 +50,7 @@ func (h HeaderMap) Set(s string) error {
 }
 
 func uriToHostAndPath(uri string) (host, path string) {
+	uri = httpStart.ReplaceAllString(uri, "")
 	indexes := slash.FindStringIndex(uri)
 	if len(indexes) == 0 {
 		host = uri
@@ -55,14 +62,14 @@ func uriToHostAndPath(uri string) (host, path string) {
 	return
 }
 
-func send(host, port, protocol string, verbose bool, w io.Writer) error {
-	conn, err := net.Dial("tcp", fmt.Sprintf("%s:%s", host, port))
+func send(host, protocol string, options RequestOptions) error {
+	conn, err := net.Dial("tcp", fmt.Sprintf("%s:%s", host, options.Port))
 	if err != nil {
 		return fmt.Errorf("Error establishing connection: %v", err)
 	}
 
-	if verbose {
-		fmt.Fprintf(w, "\n%s\n\n", protocol)
+	if options.Verbose {
+		fmt.Fprintf(options.W, "\n%s\n\n", protocol)
 	}
 
 	_, err = fmt.Fprint(conn, protocol)
@@ -77,14 +84,28 @@ func send(host, port, protocol string, verbose bool, w io.Writer) error {
 
 	sections := strings.Split(string(response), "\r\n\r\n")
 
-	if verbose {
-		fmt.Fprintln(w, sections[0])
+	if options.Verbose {
+		fmt.Fprintln(options.W, sections[0])
 	}
 
-	_, err = fmt.Fprintf(w, "\n%s\n", strings.Join(sections[1:], "\r\n\r\n"))
-
+	_, err = fmt.Fprintf(options.W, "\n%s\n", strings.Join(sections[1:], "\r\n\r\n"))
 	if err != nil {
 		return fmt.Errorf("Could not write response: %v", err)
+	}
+
+	r, _ := regexp.Compile(`\S+\s(\d{3})\s\S+`)
+	responseLine := strings.Split(sections[0], "\r\n")[0]
+	statusCode := r.FindStringSubmatch(responseLine)[1]
+
+	if statusCode == "301" || statusCode == "302" {
+		if options.FollowRedirect && options.attempts < 5 {
+
+			redirectUri := location.FindStringSubmatch(sections[0])[1]
+			options.Uri = redirectUri
+			options.attempts++
+
+			return Get(options)
+		}
 	}
 
 	return nil
@@ -97,7 +118,7 @@ func Get(options RequestOptions) error {
 	options.Headers["Host"] = host
 	request := fmt.Sprintf("GET %s HTTP/1.0", path)
 	protocol := fmt.Sprintf("%s\r\n%s\r\n", request, options.Headers)
-	return send(host, options.Port, protocol, options.Verbose, options.W)
+	return send(host, protocol, options)
 }
 
 // Post creates an http post request given a uri, headers, port and data.
@@ -107,5 +128,5 @@ func Post(options RequestOptions) error {
 	options.Headers["Host"] = host
 	request := fmt.Sprintf("POST %s HTTP/1.0", path)
 	protocol := fmt.Sprintf("%s\r\n%s\r\n%s", request, options.Headers, options.Data)
-	return send(host, options.Port, protocol, options.Verbose, options.W)
+	return send(host, protocol, options)
 }
