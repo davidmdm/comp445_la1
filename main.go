@@ -40,7 +40,7 @@ func main() {
 		log.Fatalf("Method not supported: %v\n", method)
 	}
 
-	if method == "GET" && *d == true {
+	if method == "GET" && *d {
 		log.Fatalln("Can only use data option with POST request")
 	}
 
@@ -48,7 +48,7 @@ func main() {
 		log.Fatalln("Can only use file option with POST request")
 	}
 
-	if *d == true && *f != "" {
+	if *d && *f != "" {
 		log.Fatalln("data and file options cannot be used together pick one")
 	}
 
