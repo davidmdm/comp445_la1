@@ -68,6 +68,7 @@ func send(host, protocol string, options RequestOptions) error {
 	if err != nil {
 		return fmt.Errorf("Error establishing connection to \"%s:%s\" : %v", host, options.Port, err)
 	}
+	defer conn.Close()
 
 	if options.Verbose {
 		fmt.Fprintf(options.W, "\n%s\n", protocol)
@@ -92,7 +93,7 @@ func send(host, protocol string, options RequestOptions) error {
 	responseLine := strings.Split(sections[0], "\r\n")[0]
 	statusCode := status.FindStringSubmatch(responseLine)[1]
 
-	if statusCode == "301" || statusCode == "302" && options.FollowRedirect {
+	if options.FollowRedirect && (statusCode == "301" || statusCode == "302") {
 		if options.attempts < 5 {
 			loc := location.FindStringSubmatch(sections[0])[1]
 			relativePath := strings.Index(loc, "/") == 0
